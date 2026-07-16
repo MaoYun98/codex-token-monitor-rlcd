@@ -79,6 +79,7 @@ esp_err_t usage_client_fetch(const char *url, const char *token, usage_report_t 
     if (!root) return ESP_ERR_INVALID_RESPONSE;
 
     copy_json_string(root, "updated_at", out->updated_at, sizeof(out->updated_at));
+    copy_json_string(root, "updated_hm", out->updated_hm, sizeof(out->updated_hm));
     out->stale = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root, "stale"));
 
     const cJSON *codex = cJSON_GetObjectItemCaseSensitive(root, "codex");
@@ -91,10 +92,12 @@ esp_err_t usage_client_fetch(const char *url, const char *token, usage_report_t 
     const cJSON *today = cJSON_GetObjectItemCaseSensitive(codex, "today_tokens");
     const cJSON *task = cJSON_GetObjectItemCaseSensitive(codex, "latest_task_tokens");
     const cJSON *context = cJSON_GetObjectItemCaseSensitive(codex, "latest_context_window");
+    const cJSON *focus = cJSON_GetObjectItemCaseSensitive(codex, "focus_minutes");
     const cJSON *credits = cJSON_GetObjectItemCaseSensitive(codex, "credits_balance");
     out->codex.today_tokens = cJSON_IsNumber(today) ? (int64_t)today->valuedouble : 0;
     out->codex.latest_task_tokens = cJSON_IsNumber(task) ? (int64_t)task->valuedouble : 0;
     out->codex.latest_context_window = cJSON_IsNumber(context) ? (int64_t)context->valuedouble : 0;
+    out->codex.focus_minutes = cJSON_IsNumber(focus) ? (int32_t)focus->valueint : 0;
     out->codex.credits_balance = cJSON_IsNumber(credits) ? credits->valuedouble : 0;
     out->codex.credits_valid = cJSON_IsNumber(credits);
     copy_json_string(codex, "plan_type", out->codex.plan_type, sizeof(out->codex.plan_type));
@@ -107,16 +110,34 @@ esp_err_t usage_client_fetch(const char *url, const char *token, usage_report_t 
         const cJSON *feels = cJSON_GetObjectItemCaseSensitive(weather, "feels_like_c");
         const cJSON *humidity = cJSON_GetObjectItemCaseSensitive(weather, "humidity_pct");
         const cJSON *wind = cJSON_GetObjectItemCaseSensitive(weather, "wind_kmh");
+        const cJSON *aqi = cJSON_GetObjectItemCaseSensitive(weather, "aqi");
+        const cJSON *pm25 = cJSON_GetObjectItemCaseSensitive(weather, "pm25");
+        const cJSON *rain = cJSON_GetObjectItemCaseSensitive(weather, "rain_3h_pct");
         const cJSON *code = cJSON_GetObjectItemCaseSensitive(weather, "code");
         out->weather.temp_c = cJSON_IsNumber(temp) ? temp->valuedouble : 0;
         out->weather.feels_like_c = cJSON_IsNumber(feels) ? feels->valuedouble : 0;
         out->weather.humidity_pct = cJSON_IsNumber(humidity) ? humidity->valuedouble : 0;
         out->weather.wind_kmh = cJSON_IsNumber(wind) ? wind->valuedouble : 0;
+        out->weather.aqi = cJSON_IsNumber(aqi) ? aqi->valuedouble : -1;
+        out->weather.pm25 = cJSON_IsNumber(pm25) ? pm25->valuedouble : -1;
+        out->weather.rain_3h_pct = cJSON_IsNumber(rain) ? rain->valuedouble : -1;
         out->weather.code = cJSON_IsNumber(code) ? code->valueint : 0;
         copy_json_string(weather, "condition", out->weather.condition, sizeof(out->weather.condition));
         copy_json_string(weather, "icon", out->weather.icon, sizeof(out->weather.icon));
         copy_json_string(weather, "city", out->weather.city, sizeof(out->weather.city));
+        out->weather.rain_alert = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(weather, "rain_alert"));
         out->weather.valid = cJSON_IsNumber(temp);
+    }
+
+    const cJSON *github = cJSON_GetObjectItemCaseSensitive(root, "github");
+    if (cJSON_IsObject(github)) {
+        const cJSON *reviews = cJSON_GetObjectItemCaseSensitive(github, "review_requests");
+        const cJSON *failures = cJSON_GetObjectItemCaseSensitive(github, "failing_workflows");
+        const cJSON *repositories = cJSON_GetObjectItemCaseSensitive(github, "repositories");
+        out->github.review_requests = cJSON_IsNumber(reviews) ? reviews->valueint : 0;
+        out->github.failing_workflows = cJSON_IsNumber(failures) ? failures->valueint : 0;
+        out->github.repositories = cJSON_IsNumber(repositories) ? repositories->valueint : 0;
+        out->github.valid = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(github, "valid"));
     }
 
     cJSON_Delete(root);

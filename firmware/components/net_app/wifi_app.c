@@ -53,3 +53,12 @@ esp_err_t wifi_app_connect_blocking(const char *ssid, const char *password)
     xEventGroupWaitBits(s_evt, BIT_CONNECTED, pdFALSE, pdTRUE, portMAX_DELAY);
     return ESP_OK;
 }
+
+esp_err_t wifi_app_get_rssi(int8_t *rssi)
+{
+    if (!rssi) return ESP_ERR_INVALID_ARG;
+    wifi_ap_record_t access_point = {0};
+    esp_err_t err = esp_wifi_sta_get_ap_info(&access_point);
+    if (err == ESP_OK) *rssi = access_point.rssi;
+    return err;
+}

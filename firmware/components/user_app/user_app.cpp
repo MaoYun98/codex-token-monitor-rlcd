@@ -31,10 +31,13 @@ static void clock_task(void *arg)
         ntp_now_date(date, sizeof(date));
         float t = 0, h = 0;
         bool ok = (shtc3_read(&t, &h) == ESP_OK);
+        int8_t rssi = 0;
+        bool wifi_ok = (wifi_app_get_rssi(&rssi) == ESP_OK);
         if (Lvgl_lock(-1)) {
             ui_app_set_time(hm);
             ui_app_set_date(date);
             ui_app_set_env(t, h, ok);
+            ui_app_set_wifi_rssi(rssi, wifi_ok);
             Lvgl_unlock();
         }
         vTaskDelay(pdMS_TO_TICKS(10000));

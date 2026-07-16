@@ -15,8 +15,12 @@ static lv_obj_t *img_wx_detail;
 static lv_obj_t *bar_primary, *bar_secondary;
 static lv_obj_t *lbl_primary_name, *lbl_secondary_name;
 static lv_obj_t *lbl_primary_pct, *lbl_secondary_pct, *lbl_reset;
-static lv_obj_t *lbl_today, *lbl_task, *lbl_plan;
-static lv_obj_t *lbl_wx_temp, *lbl_wx_condition, *lbl_feels, *lbl_humidity, *lbl_wind;
+static lv_obj_t *lbl_today, *lbl_focus, *lbl_work_name, *lbl_work;
+static lv_obj_t *lbl_wx_temp, *lbl_wx_condition, *lbl_aqi, *lbl_pm25, *lbl_dynamic;
+static lv_obj_t *img_dynamic, *lbl_status;
+static char last_sync[8] = "--:--";
+static int wifi_rssi;
+static bool wifi_ok, bridge_stale = true;
 
 static void fmt_tok(char *out, size_t size, int64_t tokens)
 {
@@ -135,10 +139,10 @@ void ui_app_init(void)
 
     mklabel(screen, 12, 204, &lv_font_montserrat_14, "today");
     lbl_today = mkalign(screen, 100, 204, 138, LV_TEXT_ALIGN_RIGHT, &font_amt14, "-");
-    mklabel(screen, 12, 232, &lv_font_montserrat_14, "last task");
-    lbl_task = mkalign(screen, 100, 232, 138, LV_TEXT_ALIGN_RIGHT, &font_amt14, "-");
-    mklabel(screen, 12, 260, &lv_font_montserrat_14, "plan");
-    lbl_plan = mkalign(screen, 100, 260, 138, LV_TEXT_ALIGN_RIGHT, &font_amt14, "-");
+    mklabel(screen, 12, 232, &lv_font_montserrat_14, "focus");
+    lbl_focus = mkalign(screen, 100, 232, 138, LV_TEXT_ALIGN_RIGHT, &font_amt14, "-");
+    lbl_work_name = mklabel(screen, 12, 260, &lv_font_montserrat_14, "last task");
+    lbl_work = mkalign(screen, 100, 260, 138, LV_TEXT_ALIGN_RIGHT, &font_amt14, "-");
 
     mklabel(screen, 264, 74, &lv_font_montserrat_20, "BEIJING");
     img_wx_detail = mkicon(screen, 264, 105, &icon_wx_large_cloud);
@@ -147,12 +151,30 @@ void ui_app_init(void)
     lbl_wx_condition = mkalign(screen, 260, 143, 130, LV_TEXT_ALIGN_CENTER,
                                &lv_font_montserrat_14, "--");
     mkdiv(screen, 264, 170, 122, 1);
-    mkicon(screen, 264, 180, &icon_metric_feels);
-    mkicon(screen, 264, 210, &icon_metric_humidity);
-    mkicon(screen, 264, 240, &icon_metric_wind);
-    lbl_feels = mklabel(screen, 288, 181, &lv_font_montserrat_14, "feels --\xC2\xB0""C");
-    lbl_humidity = mklabel(screen, 288, 211, &lv_font_montserrat_14, "humid --%");
-    lbl_wind = mklabel(screen, 288, 241, &lv_font_montserrat_14, "wind --km/h");
+    mkicon(screen, 264, 180, &icon_metric_air);
+    mkicon(screen, 264, 210, &icon_metric_particles);
+    img_dynamic = mkicon(screen, 264, 240, &icon_metric_wind);
+    lbl_aqi = mklabel(screen, 288, 181, &lv_font_montserrat_14, "AQI --");
+    lbl_pm25 = mklabel(screen, 288, 211, &lv_font_montserrat_14, "PM2.5 --");
+    lbl_dynamic = mklabel(screen, 288, 241, &lv_font_montserrat_14, "wind --km/h");
+    lbl_status = mkalign(screen, 260, 271, 130, LV_TEXT_ALIGN_RIGHT,
+                         &lv_font_montserrat_14, "SYNC --:--");
+}
+
+static void render_status(void)
+{
+    if (!lbl_status) return;
+
+    char text[32];
+    if (bridge_stale) {
+        if (wifi_ok) snprintf(text, sizeof(text), "STALE  %ddBm", wifi_rssi);
+        else snprintf(text, sizeof(text), "STALE  WiFi--");
+    } else if (wifi_ok) {
+        snprintf(text, sizeof(text), "%s  %ddBm", last_sync, wifi_rssi);
+    } else {
+        snprintf(text, sizeof(text), "%s  WiFi--", last_sync);
+    }
+    lv_label_set_text(lbl_status, text);
 }
 
 static void update_window(const usage_rate_window_t *window, lv_obj_t *name,
@@ -199,10 +221,19 @@ void ui_app_update(const usage_report_t *report)
     fmt_tok(value, sizeof(value), report->codex.today_tokens);
     strncat(value, " tok", sizeof(value) - strlen(value) - 1);
     lv_label_set_text(lbl_today, value);
-    fmt_tok(value, sizeof(value), report->codex.latest_task_tokens);
-    strncat(value, " tok", sizeof(value) - strlen(value) - 1);
-    lv_label_set_text(lbl_task, value);
-    lv_label_set_text(lbl_plan, report->codex.plan_type[0] ? report->codex.plan_type : "-");
+    snprintf(value, sizeof(value), "%dh %02dm", report->codex.focus_minutes / 60,
+             report->codex.focus_minutes % 60);
+    lv_label_set_text(lbl_focus, value);
+    if (report->github.valid) {
+        lv_label_set_text(lbl_work_name, "github");
+        snprintf(value, sizeof(value), "PR %d  CI %d", report->github.review_requests,
+                 report->github.failing_workflows);
+    } else {
+        lv_label_set_text(lbl_work_name, "last task");
+        fmt_tok(value, sizeof(value), report->codex.latest_task_tokens);
+        strncat(value, " tok", sizeof(value) - strlen(value) - 1);
+    }
+    lv_label_set_text(lbl_work, value);
 
     if (report->weather.valid) {
         lv_image_set_src(img_wx, wx_icon(report->weather.icon));
@@ -211,13 +242,26 @@ void ui_app_update(const usage_report_t *report)
         snprintf(value, sizeof(value), "%.0f\xC2\xB0""C", report->weather.temp_c);
         lv_label_set_text(lbl_wx_temp, value);
         lv_label_set_text(lbl_wx_condition, report->weather.condition);
-        snprintf(value, sizeof(value), "feels  %.0f\xC2\xB0""C", report->weather.feels_like_c);
-        lv_label_set_text(lbl_feels, value);
-        snprintf(value, sizeof(value), "humid  %.0f%%", report->weather.humidity_pct);
-        lv_label_set_text(lbl_humidity, value);
-        snprintf(value, sizeof(value), "wind   %.0fkm/h", report->weather.wind_kmh);
-        lv_label_set_text(lbl_wind, value);
+        if (report->weather.aqi >= 0) snprintf(value, sizeof(value), "AQI %.0f", report->weather.aqi);
+        else snprintf(value, sizeof(value), "AQI --");
+        lv_label_set_text(lbl_aqi, value);
+        if (report->weather.pm25 >= 0) snprintf(value, sizeof(value), "PM2.5 %.0f", report->weather.pm25);
+        else snprintf(value, sizeof(value), "PM2.5 --");
+        lv_label_set_text(lbl_pm25, value);
+        if (report->weather.rain_alert && report->weather.rain_3h_pct >= 0) {
+            lv_image_set_src(img_dynamic, &icon_metric_rain);
+            snprintf(value, sizeof(value), "rain3h %.0f%%", report->weather.rain_3h_pct);
+        } else {
+            lv_image_set_src(img_dynamic, &icon_metric_wind);
+            snprintf(value, sizeof(value), "wind %.0fkm/h", report->weather.wind_kmh);
+        }
+        lv_label_set_text(lbl_dynamic, value);
     }
+
+    strncpy(last_sync, report->updated_hm, sizeof(last_sync) - 1);
+    last_sync[sizeof(last_sync) - 1] = 0;
+    bridge_stale = report->stale;
+    render_status();
 }
 
 void ui_app_set_env(float temp_c, float humidity, bool ok)
@@ -230,4 +274,14 @@ void ui_app_set_env(float temp_c, float humidity, bool ok)
 
 void ui_app_set_time(const char *hm) { if (lbl_time) lv_label_set_text(lbl_time, hm); }
 void ui_app_set_date(const char *date) { if (lbl_date) lv_label_set_text(lbl_date, date); }
-void ui_app_mark_stale(void) { }
+void ui_app_set_wifi_rssi(int8_t rssi, bool ok)
+{
+    wifi_rssi = rssi;
+    wifi_ok = ok;
+    render_status();
+}
+void ui_app_mark_stale(void)
+{
+    bridge_stale = true;
+    render_status();
+}

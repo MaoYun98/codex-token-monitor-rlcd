@@ -26,6 +26,7 @@ class CodexLocalTests(unittest.TestCase):
             self.assertEqual(usage.primary.label, "7d")
             self.assertEqual(usage.primary.remaining_percent, 63)
             self.assertEqual(usage.plan_type, "plus")
+            self.assertEqual(usage.focus_minutes, 10)
 
     def test_missing_session_data_is_nonfatal(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -33,9 +34,28 @@ class CodexLocalTests(unittest.TestCase):
             self.assertEqual(usage.status, "unavailable")
             self.assertIsNone(usage.primary)
 
+    def test_focus_time_clusters_activity_with_fifteen_minute_gaps(self):
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp)
+            path = home / "sessions" / "2026" / "07" / "16" / "focus.jsonl"
+            path.parent.mkdir(parents=True)
+            events = [
+                self._event("2026-07-16T01:00:00Z", 10_000, 20),
+                self._event("2026-07-16T01:10:00Z", 20_000, 20),
+                self._event("2026-07-16T02:00:00Z", 30_000, 20),
+            ]
+            path.write_text("\n".join(json.dumps(event) for event in events) + "\n", encoding="utf-8")
+            usage = fetch_codex(home=home, now=datetime(2026, 7, 16, 3, tzinfo=timezone.utc))
+            self.assertEqual(usage.focus_minutes, 20)  # 15-minute cluster + one 5-minute cluster
+
     @staticmethod
     def _write_snapshot(path: Path, timestamp: str, total_tokens: int, used_percent: int) -> None:
-        event = {
+        path.write_text(json.dumps(CodexLocalTests._event(timestamp, total_tokens, used_percent)) + "\n",
+                        encoding="utf-8")
+
+    @staticmethod
+    def _event(timestamp: str, total_tokens: int, used_percent: int) -> dict:
+        return {
             "timestamp": timestamp,
             "type": "event_msg",
             "payload": {
@@ -56,7 +76,6 @@ class CodexLocalTests(unittest.TestCase):
                 },
             },
         }
-        path.write_text(json.dumps(event) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

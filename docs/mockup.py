@@ -73,13 +73,17 @@ def partly_cloudy(x, y):
 
 
 def metric_icon(x, y, kind):
-    if kind == "feels":
-        draw.rounded_rectangle((xy(x + 6), xy(y), xy(x + 10), xy(y + 12)),
-                               radius=xy(2), outline=0, width=xy(2))
-        draw.ellipse((xy(x + 4), xy(y + 9), xy(x + 12), xy(y + 16)), fill=0)
-    elif kind == "humidity":
-        draw.polygon(((xy(x + 8), xy(y)), (xy(x + 2), xy(y + 10)),
-                      (xy(x + 8), xy(y + 16)), (xy(x + 14), xy(y + 10))), fill=0)
+    if kind == "air":
+        line(x + 1, y + 5, x + 12, y + 5, 2)
+        line(x + 4, y + 10, x + 15, y + 10, 2)
+    elif kind == "particles":
+        for px, py, radius in ((4, 5, 2), (11, 3, 1), (10, 11, 3), (3, 13, 1)):
+            draw.ellipse((xy(x + px - radius), xy(y + py - radius),
+                          xy(x + px + radius), xy(y + py + radius)), fill=0)
+    elif kind == "rain":
+        draw.arc((xy(x + 1), xy(y + 1), xy(x + 15), xy(y + 12)), 180, 360,
+                 fill=0, width=xy(2))
+        line(x + 8, y + 6, x + 8, y + 14, 2)
     else:
         line(x + 1, y + 4, x + 13, y + 4, 2)
         line(x + 1, y + 8, x + 15, y + 8, 2)
@@ -106,22 +110,23 @@ text(12, 169, "5h resets in 2h 14m", 14)
 line(12, 195, 240, 195)
 text(12, 204, "today", 14)
 text(238, 204, "2.8M tok", 14, True, "ra")
-text(12, 232, "last task", 14)
-text(238, 232, "184k tok", 14, True, "ra")
-text(12, 260, "plan", 14)
-text(238, 260, "plus", 14, True, "ra")
+text(12, 232, "focus", 14)
+text(238, 232, "3h 16m", 14, True, "ra")
+text(12, 260, "github", 14)
+text(238, 260, "PR 3  CI 1", 14, True, "ra")
 
 text(264, 74, "BEIJING", 20, True)
 partly_cloudy(264, 105)
 text(348, 104, "32 C", 28, True, "ma")
 text(325, 143, "Partly", 14, False, "ma")
 line(264, 171, 386, 171)
-metric_icon(264, 180, "feels")
-metric_icon(264, 210, "humidity")
-metric_icon(264, 240, "wind")
-text(288, 181, "feels 36 C", 14)
-text(288, 211, "humid 58%", 14)
-text(288, 241, "wind 12km/h", 14)
+metric_icon(264, 180, "air")
+metric_icon(264, 210, "particles")
+metric_icon(264, 240, "rain")
+text(288, 181, "AQI 82", 14)
+text(288, 211, "PM2.5 28", 14)
+text(288, 241, "rain3h 65%", 14)
+text(390, 271, "16:42  -58dBm", 12, False, "ra")
 
 image.convert("RGB").save(ROOT / "mockup.png")
 print(ROOT / "mockup.png")
