@@ -1,0 +1,16 @@
+[project]
+name = "codex-rlcd-bridge"
+version = "1.0.0"
+description = "Local bridge exposing Codex rate limits and Beijing weather to an ESP32-S3 RLCD."
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn>=0.27",
+    "pydantic>=2.6",
+]
+
+[project.scripts]
+rlcd-bridge = "bridge:main"
+
+[tool.uv]
+package = false

@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.uv-cache/
+*.egg-info/
+
+# ESP-IDF
+build/
+sdkconfig
+sdkconfig.old
+dependencies.lock
+managed_components/
+
+# Editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local config
+bridge/.env
+firmware/main/secrets.h
+
+# Vendor reference (kept locally; not committed)
+ESP32-S3-RLCD-4.2-Demo/
+ESP32-S3-RLCD-4.2-Demo.zip
+
+# Uploaded photos / scratch
+[0-9a-f][0-9a-f][0-9a-f][0-9a-f]*.jpg
