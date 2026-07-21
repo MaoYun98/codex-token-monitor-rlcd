@@ -108,6 +108,20 @@ def metric_alpha(kind: str, size: int = 16) -> Image.Image:
             draw.line((1 * scale, y * scale, end * scale, y * scale), fill=255, width=w)
         draw.arc((9 * scale, 1 * scale, 15 * scale, 7 * scale), 260, 95, fill=255, width=w)
         draw.arc((11 * scale, 6 * scale, 17 * scale, 12 * scale), 260, 95, fill=255, width=w)
+    elif kind == "air":
+        draw.arc((1 * scale, 1 * scale, 11 * scale, 9 * scale), 245, 80, fill=255, width=w)
+        draw.arc((5 * scale, 6 * scale, 16 * scale, 15 * scale), 245, 80, fill=255, width=w)
+        draw.line((1 * scale, 7 * scale, 12 * scale, 7 * scale), fill=255, width=w)
+    elif kind == "particles":
+        for x, y, radius in ((4, 5, 2), (11, 3, 1), (10, 10, 3), (3, 13, 1)):
+            draw.ellipse(((x - radius) * scale, (y - radius) * scale,
+                          (x + radius) * scale, (y + radius) * scale), fill=255)
+    elif kind == "rain":
+        draw.arc((1 * scale, 1 * scale, 15 * scale, 11 * scale), 180, 360, fill=255, width=w)
+        draw.line((8 * scale, 6 * scale, 8 * scale, 13 * scale), fill=255, width=w)
+        draw.arc((6 * scale, 10 * scale, 11 * scale, 16 * scale), 0, 120, fill=255, width=w)
+        draw.line((2 * scale, 12 * scale, 1 * scale, 15 * scale), fill=255, width=w)
+        draw.line((14 * scale, 12 * scale, 13 * scale, 15 * scale), fill=255, width=w)
     return image.resize((size, size), Image.Resampling.LANCZOS)
 
 
@@ -129,7 +143,7 @@ icons.update({f"wx_{kind}": weather_alpha(kind, 26)
 icons.update({f"wx_large_{kind}": weather_alpha(kind, 42)
               for kind in ("clear", "partly", "cloud", "rain", "snow", "fog")})
 icons.update({f"metric_{kind}": metric_alpha(kind)
-              for kind in ("feels", "humidity", "wind")})
+              for kind in ("wind", "air", "particles", "rain")})
 OUT_C.write_text('#include "icons.h"\n\n' +
                  "\n".join(emit(name, image) for name, image in icons.items()), encoding="utf-8")
 OUT_H.write_text("#pragma once\n#include \"lvgl.h\"\n\n" +

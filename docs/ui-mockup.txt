@@ -2,11 +2,14 @@
 
 16:42   THU 07/16   IN 25.4 C 52%RH       BEIJING
 --------------------------------------------------
-CODEX                    REMAINING | BEIJING
-7d  [#########-] 87%              |   32 C
-5h  [#######---] 72%              |  Partly
-5h resets in 2h 14m               | -----------
------------------------------     | feels  36 C
-today                 2.8M tok    | humid  58%
-last task              184k tok   | wind   12km/h
-plan                         plus |
+[Codex] CODEX            REMAINING | BEIJING
+7d  [#########-] 87%               | [wx] 32 C
+5h  [#######---] 72%               |     Partly
+5h resets in 2h 14m                | -----------
+-----------------------------      | AQI 82
+today                 2.8M tok     | PM2.5 28
+focus                  3h 16m      | rain3h 65%
+github              PR 3  CI 1     | 16:42 -58dBm
+
+When 3-hour rain risk is below RLCD_RAIN_ALERT_PCT, the rain row becomes wind.
+When GitHub is not configured, the GitHub row becomes latest-task tokens.

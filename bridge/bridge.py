@@ -9,8 +9,9 @@ from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.responses import JSONResponse
 
-from schema import CodexUsage, RateWindow, UsageReport, Weather
+from schema import CodexUsage, GithubStatus, RateWindow, UsageReport, Weather
 from sources.codex_local import fetch_codex
+from sources.github_status import fetch_github_status
 from sources.weather import fetch_weather
 
 
@@ -23,10 +24,13 @@ _cache: dict[str, object] = {"report": None, "ts": 0.0, "error": None}
 
 
 def _build_live_report() -> UsageReport:
+    now = datetime.now().astimezone()
     return UsageReport(
-        updated_at=datetime.now(timezone.utc),
+        updated_at=now.astimezone(timezone.utc),
+        updated_hm=now.strftime("%H:%M"),
         codex=fetch_codex(),
         weather=fetch_weather(),
+        github=fetch_github_status(),
     )
 
 
@@ -66,6 +70,7 @@ def _mock_report() -> UsageReport:
     now = datetime.now(timezone.utc)
     return UsageReport(
         updated_at=now,
+        updated_hm=now.astimezone().strftime("%H:%M"),
         source="mock",
         codex=CodexUsage(
             primary=RateWindow(
@@ -81,6 +86,7 @@ def _mock_report() -> UsageReport:
             today_tokens=382_000,
             latest_task_tokens=127_400,
             latest_context_window=258_400,
+            focus_minutes=196,
             plan_type="plus",
             credits_balance=0,
             sampled_at=now,
@@ -88,8 +94,10 @@ def _mock_report() -> UsageReport:
         ),
         weather=Weather(
             temp_c=31.2, feels_like_c=33.5, humidity_pct=48, wind_kmh=12.4,
+            aqi=82, pm25=28.4, rain_3h_pct=65, rain_alert=True,
             code=2, condition="Partly", icon="partly", city="BEIJING",
         ),
+        github=GithubStatus(review_requests=3, failing_workflows=1, repositories=2, valid=True),
     )
 
 

@@ -35,8 +35,9 @@ def _parse_time(value: str | None) -> datetime | None:
         return None
 
 
-def _last_snapshot(path: Path) -> tuple[datetime, dict[str, Any]] | None:
+def _session_summary(path: Path) -> tuple[tuple[datetime, dict[str, Any]] | None, list[datetime]]:
     latest: tuple[datetime, dict[str, Any]] | None = None
+    activity: list[datetime] = []
     try:
         with path.open("r", encoding="utf-8") as stream:
             for line in stream:
@@ -50,9 +51,27 @@ def _last_snapshot(path: Path) -> tuple[datetime, dict[str, Any]] | None:
                 timestamp = _parse_time(event.get("timestamp"))
                 if timestamp is not None:
                     latest = timestamp, payload
+                    activity.append(timestamp)
     except OSError:
-        return None
-    return latest
+        return None, []
+    return latest, activity
+
+
+def _focus_minutes(activity: list[datetime]) -> int:
+    """Estimate active Codex time using 15-minute activity clusters."""
+    if not activity:
+        return 0
+    ordered = sorted(set(activity))
+    total_seconds = 0.0
+    cluster_start = cluster_end = ordered[0]
+    for timestamp in ordered[1:]:
+        if (timestamp - cluster_end).total_seconds() <= 15 * 60:
+            cluster_end = timestamp
+            continue
+        total_seconds += (cluster_end - cluster_start).total_seconds() + 5 * 60
+        cluster_start = cluster_end = timestamp
+    total_seconds += (cluster_end - cluster_start).total_seconds() + 5 * 60
+    return max(5, round(total_seconds / 60))
 
 
 def _window_label(minutes: int) -> str:
@@ -91,10 +110,12 @@ def fetch_codex(home: Path | None = None, now: datetime | None = None) -> CodexU
     root = home or _codex_home()
     local_now = now or datetime.now().astimezone()
     snapshots: list[tuple[datetime, dict[str, Any]]] = []
+    activity: list[datetime] = []
     for path in _session_files(root):
-        snapshot = _last_snapshot(path)
+        snapshot, event_times = _session_summary(path)
         if snapshot is not None:
             snapshots.append(snapshot)
+        activity.extend(event_times)
 
     if not snapshots:
         return CodexUsage(status="unavailable")
@@ -102,6 +123,8 @@ def fetch_codex(home: Path | None = None, now: datetime | None = None) -> CodexU
     snapshots.sort(key=lambda item: item[0])
     sampled_at, latest = snapshots[-1]
     today_tokens = 0
+    today_activity = [timestamp for timestamp in activity
+                      if timestamp.astimezone().date() == local_now.date()]
     for timestamp, payload in snapshots:
         if timestamp.astimezone().date() != local_now.date():
             continue
@@ -124,6 +147,7 @@ def fetch_codex(home: Path | None = None, now: datetime | None = None) -> CodexU
         today_tokens=today_tokens,
         latest_task_tokens=int(total.get("total_tokens") or 0),
         latest_context_window=int(info.get("model_context_window") or 0),
+        focus_minutes=_focus_minutes(today_activity),
         plan_type=str(rate_limits.get("plan_type") or ""),
         credits_balance=credits_balance,
         sampled_at=sampled_at,
