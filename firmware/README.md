@@ -19,7 +19,13 @@ idf.py build flash monitor
 ```
 
 Use `?mock=1` on `RLCD_BRIDGE_URL` for the first flash. The device only needs
-2.4 GHz Wi-Fi and LAN access to the bridge host.
+2.4 GHz Wi-Fi and LAN access to the bridge host. Prefer an mDNS hostname such as
+`http://codex-bridge.local:7777/api/usage` so DHCP address changes do not require
+a firmware update.
+
+The charging glyph appears immediately when a USB data host is present. Because the
+charger STAT pin is not routed to the ESP32, voltage-rise detection is also used for
+power-only USB chargers.
 
 Vendor pin assignments remain in `main/user_config.h`; the panel and LVGL BSP
 remain under `components/port_bsp` and `components/app_bsp`.

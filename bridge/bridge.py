@@ -1,13 +1,17 @@
 """Local bridge for the Codex + Beijing weather RLCD dashboard."""
 from __future__ import annotations
 
+import asyncio
 import os
+import socket
 import threading
 import time
 from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.responses import JSONResponse
+from zeroconf import ServiceInfo
+from zeroconf.asyncio import AsyncZeroconf
 
 from schema import CodexUsage, GithubStatus, RateWindow, UsageReport, Weather
 from sources.codex_local import fetch_codex
@@ -21,6 +25,73 @@ AUTH_TOKEN = os.environ.get("RLCD_AUTH_TOKEN") or None
 app = FastAPI(title="Codex RLCD bridge", version="1.0.0")
 _cache_lock = threading.Lock()
 _cache: dict[str, object] = {"report": None, "ts": 0.0, "error": None}
+_zeroconf: AsyncZeroconf | None = None
+_zeroconf_info: ServiceInfo | None = None
+_zeroconf_task: asyncio.Task[None] | None = None
+_zeroconf_address = ""
+
+
+def _local_ipv4() -> str:
+    configured = os.environ.get("RLCD_MDNS_IP", "").strip()
+    if configured:
+        return configured
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.connect(("8.8.8.8", 80))
+        return str(sock.getsockname()[0])
+    finally:
+        sock.close()
+
+
+async def _start_mdns() -> None:
+    global _zeroconf, _zeroconf_info, _zeroconf_task, _zeroconf_address
+    hostname = os.environ.get("RLCD_MDNS_HOSTNAME", "codex-bridge").strip().removesuffix(".local")
+    address = _local_ipv4()
+    port = int(os.environ.get("RLCD_PORT", "7777"))
+    _zeroconf_info = ServiceInfo(
+        "_http._tcp.local.",
+        f"{hostname}._http._tcp.local.",
+        addresses=[socket.inet_aton(address)],
+        port=port,
+        properties={"path": "/api/usage"},
+        server=f"{hostname}.local.",
+    )
+    _zeroconf = AsyncZeroconf()
+    await _zeroconf.async_register_service(_zeroconf_info)
+    _zeroconf_address = address
+    _zeroconf_task = asyncio.create_task(_watch_mdns_address())
+    print(f"mDNS: http://{hostname}.local:{port}/api/usage -> {address}", flush=True)
+
+
+async def _watch_mdns_address() -> None:
+    global _zeroconf_address
+    while True:
+        await asyncio.sleep(15)
+        address = _local_ipv4()
+        if address == _zeroconf_address or _zeroconf is None or _zeroconf_info is None:
+            continue
+        _zeroconf_info.addresses = [socket.inet_aton(address)]
+        await _zeroconf.async_update_service(_zeroconf_info)
+        _zeroconf_address = address
+        print(f"mDNS: address updated -> {address}", flush=True)
+
+
+async def _stop_mdns() -> None:
+    global _zeroconf, _zeroconf_info, _zeroconf_task, _zeroconf_address
+    if _zeroconf_task is not None:
+        _zeroconf_task.cancel()
+        try:
+            await _zeroconf_task
+        except asyncio.CancelledError:
+            pass
+    if _zeroconf is not None:
+        if _zeroconf_info is not None:
+            await _zeroconf.async_unregister_service(_zeroconf_info)
+        await _zeroconf.async_close()
+    _zeroconf = None
+    _zeroconf_info = None
+    _zeroconf_task = None
+    _zeroconf_address = ""
 
 
 def _build_live_report() -> UsageReport:
@@ -102,8 +173,14 @@ def _mock_report() -> UsageReport:
 
 
 @app.on_event("startup")
-def _on_startup() -> None:
+async def _on_startup() -> None:
+    await _start_mdns()
     _start_refresher()
+
+
+@app.on_event("shutdown")
+async def _on_shutdown() -> None:
+    await _stop_mdns()
 
 
 @app.get("/healthz")

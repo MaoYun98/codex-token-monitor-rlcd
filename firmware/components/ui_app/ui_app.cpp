@@ -10,7 +10,7 @@ LV_FONT_DECLARE(font_amt14);
 #define WHITE lv_color_white()
 
 static lv_obj_t *lbl_time, *lbl_date, *lbl_indoor;
-static lv_obj_t *img_wx, *lbl_wx_header;
+static lv_obj_t *lbl_battery, *lbl_wifi;
 static lv_obj_t *img_wx_detail;
 static lv_obj_t *bar_primary, *bar_secondary;
 static lv_obj_t *lbl_primary_name, *lbl_secondary_name;
@@ -78,15 +78,6 @@ static lv_obj_t *mkbar(lv_obj_t *parent, int x, int y, int width)
     return bar;
 }
 
-static const lv_image_dsc_t *wx_icon(const char *key)
-{
-    if (!strcmp(key, "clear")) return &icon_wx_clear;
-    if (!strcmp(key, "partly")) return &icon_wx_partly;
-    if (!strcmp(key, "rain")) return &icon_wx_rain;
-    if (!strcmp(key, "snow")) return &icon_wx_snow;
-    if (!strcmp(key, "fog")) return &icon_wx_fog;
-    return &icon_wx_cloud;
-}
 
 static const lv_image_dsc_t *wx_icon_large(const char *key)
 {
@@ -117,9 +108,10 @@ void ui_app_init(void)
     lbl_time = mklabel(screen, 10, 3, &lv_font_montserrat_28, "--:--");
     lbl_date = mklabel(screen, 108, 6, &lv_font_montserrat_14, "--- --/--");
     lbl_indoor = mklabel(screen, 108, 34, &lv_font_montserrat_14, "IN --.-\xC2\xB0""C  --%RH");
-    img_wx = mkicon(screen, 272, 7, &icon_wx_cloud);
-    lbl_wx_header = mkalign(screen, 314, 11, 76, LV_TEXT_ALIGN_RIGHT,
-                            &lv_font_montserrat_14, "BEIJING");
+    lbl_battery = mkalign(screen, 260, 7, 130, LV_TEXT_ALIGN_RIGHT,
+                          &lv_font_montserrat_14, LV_SYMBOL_BATTERY_EMPTY " --%");
+    lbl_wifi = mkalign(screen, 260, 34, 130, LV_TEXT_ALIGN_RIGHT,
+                       &lv_font_montserrat_14, LV_SYMBOL_WIFI " WiFi--");
     mkdiv(screen, 10, 62, 380, 2);
     mkdiv(screen, 252, 72, 2, 216);
 
@@ -184,7 +176,7 @@ static void update_window(const usage_rate_window_t *window, lv_obj_t *name,
     lv_label_set_text(name, window->label);
     lv_bar_set_value(bar, window->remaining_pct, LV_ANIM_OFF);
     char text[16];
-    snprintf(text, sizeof(text), "%d%%", window->remaining_pct);
+    snprintf(text, sizeof(text), "%ld%%", (long)window->remaining_pct);
     lv_label_set_text(percent, text);
 }
 
@@ -209,7 +201,7 @@ void ui_app_update(const usage_report_t *report)
         ? &report->codex.secondary : &report->codex.primary;
     if (reset_window->valid && reset_window->reset_minutes >= 0) {
         int minutes = reset_window->reset_minutes;
-        char text[40];
+        char text[64];
         if (minutes >= 1440) snprintf(text, sizeof(text), "%s resets in %dd %dh",
                                       reset_window->label, minutes / 1440, (minutes / 60) % 24);
         else snprintf(text, sizeof(text), "%s resets in %dh %02dm",
@@ -217,17 +209,17 @@ void ui_app_update(const usage_report_t *report)
         lv_label_set_text(lbl_reset, text);
     }
 
-    char value[32];
+    char value[64];
     fmt_tok(value, sizeof(value), report->codex.today_tokens);
     strncat(value, " tok", sizeof(value) - strlen(value) - 1);
     lv_label_set_text(lbl_today, value);
-    snprintf(value, sizeof(value), "%dh %02dm", report->codex.focus_minutes / 60,
-             report->codex.focus_minutes % 60);
+    snprintf(value, sizeof(value), "%ldh %02ldm", (long)(report->codex.focus_minutes / 60),
+             (long)(report->codex.focus_minutes % 60));
     lv_label_set_text(lbl_focus, value);
     if (report->github.valid) {
-        lv_label_set_text(lbl_work_name, "github");
-        snprintf(value, sizeof(value), "PR %d  CI %d", report->github.review_requests,
-                 report->github.failing_workflows);
+        lv_label_set_text(lbl_work_name, "GitHub");
+        snprintf(value, sizeof(value), "PR %ld  CI %ld", (long)report->github.review_requests,
+                 (long)report->github.failing_workflows);
     } else {
         lv_label_set_text(lbl_work_name, "last task");
         fmt_tok(value, sizeof(value), report->codex.latest_task_tokens);
@@ -236,9 +228,7 @@ void ui_app_update(const usage_report_t *report)
     lv_label_set_text(lbl_work, value);
 
     if (report->weather.valid) {
-        lv_image_set_src(img_wx, wx_icon(report->weather.icon));
         lv_image_set_src(img_wx_detail, wx_icon_large(report->weather.icon));
-        lv_label_set_text(lbl_wx_header, report->weather.city);
         snprintf(value, sizeof(value), "%.0f\xC2\xB0""C", report->weather.temp_c);
         lv_label_set_text(lbl_wx_temp, value);
         lv_label_set_text(lbl_wx_condition, report->weather.condition);
@@ -266,7 +256,7 @@ void ui_app_update(const usage_report_t *report)
 
 void ui_app_set_env(float temp_c, float humidity, bool ok)
 {
-    char text[40];
+    char text[48];
     if (ok) snprintf(text, sizeof(text), "IN %.1f\xC2\xB0""C  %.0f%%RH", temp_c, humidity);
     else snprintf(text, sizeof(text), "IN --");
     lv_label_set_text(lbl_indoor, text);
@@ -274,11 +264,31 @@ void ui_app_set_env(float temp_c, float humidity, bool ok)
 
 void ui_app_set_time(const char *hm) { if (lbl_time) lv_label_set_text(lbl_time, hm); }
 void ui_app_set_date(const char *date) { if (lbl_date) lv_label_set_text(lbl_date, date); }
-void ui_app_set_wifi_rssi(int8_t rssi, bool ok)
+void ui_app_set_wifi_status(const char *ssid, int8_t rssi, bool ok)
 {
     wifi_rssi = rssi;
     wifi_ok = ok;
+    char text[40];
+    if (ok && ssid && ssid[0]) snprintf(text, sizeof(text), LV_SYMBOL_WIFI " %.20s", ssid);
+    else snprintf(text, sizeof(text), LV_SYMBOL_WIFI " WiFi--");
+    lv_label_set_text(lbl_wifi, text);
     render_status();
+}
+void ui_app_set_battery(int percent, bool ok, bool charging)
+{
+    char text[24];
+    if (!ok) {
+        snprintf(text, sizeof(text), LV_SYMBOL_BATTERY_EMPTY " --%%");
+    } else {
+        const char *symbol = percent >= 90 ? LV_SYMBOL_BATTERY_FULL
+                           : percent >= 65 ? LV_SYMBOL_BATTERY_3
+                           : percent >= 40 ? LV_SYMBOL_BATTERY_2
+                           : percent >= 15 ? LV_SYMBOL_BATTERY_1
+                                           : LV_SYMBOL_BATTERY_EMPTY;
+        snprintf(text, sizeof(text), "%s%s %d%%", symbol,
+                 charging ? " " LV_SYMBOL_CHARGE : "", percent);
+    }
+    lv_label_set_text(lbl_battery, text);
 }
 void ui_app_mark_stale(void)
 {
