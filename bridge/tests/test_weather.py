@@ -9,6 +9,10 @@ from sources import weather
 
 
 class WeatherTests(unittest.TestCase):
+    def setUp(self):
+        weather._cache.update(weather=None, ts=0.0)
+        weather._air_cache.update(aqi=None, pm25=None, ts=0.0, attempt_ts=0.0)
+
     def test_openmeteo_weather_includes_air_and_rain_alert(self):
         forecast = {
             "current": {
@@ -24,7 +28,7 @@ class WeatherTests(unittest.TestCase):
         }
         air = {"current": {"us_aqi": 88, "pm2_5": 27.4}}
         with patch.object(weather, "_json", side_effect=[forecast, air]):
-            value = weather._fetch_weather()
+            value = weather.fetch_weather()
         self.assertEqual(value.rain_3h_pct, 45)
         self.assertTrue(value.rain_alert)
         self.assertEqual(value.aqi, 88)
@@ -44,9 +48,28 @@ class WeatherTests(unittest.TestCase):
             "hourly": {"precipitation_probability": [0, 10, 20]},
         }
         with patch.object(weather, "_json", side_effect=[forecast, {"current": {}}]):
-            value = weather._fetch_weather()
+            value = weather.fetch_weather()
         self.assertFalse(value.rain_alert)
 
+    def test_air_quality_retries_separately_and_keeps_last_valid_values(self):
+        forecast = weather.Weather(temp_c=20, condition="Clear", icon="clear", city="BEIJING")
+        with patch.object(weather, "_fetch_openmeteo", return_value=forecast), \
+             patch.object(weather, "_air_quality", side_effect=[OSError("temporary"), (88, 27.4)]):
+            with patch.object(weather.time, "time", return_value=100):
+                first = weather.fetch_weather()
+            self.assertIsNone(first.aqi)
+
+            with patch.object(weather.time, "time", return_value=161):
+                second = weather.fetch_weather()
+        self.assertEqual(second.aqi, 88)
+        self.assertEqual(second.pm25, 27.4)
+
+        weather._air_cache.update(ts=0.0, attempt_ts=0.0)
+        with patch.object(weather, "_air_quality", side_effect=OSError("temporary")), \
+             patch.object(weather.time, "time", return_value=1000):
+            third = weather.fetch_weather()
+        self.assertEqual(third.aqi, 88)
+        self.assertEqual(third.pm25, 27.4)
 
 if __name__ == "__main__":
     unittest.main()

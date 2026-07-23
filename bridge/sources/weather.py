@@ -17,6 +17,8 @@ LAT = float(os.environ.get("RLCD_WEATHER_LAT", "39.9042"))
 LON = float(os.environ.get("RLCD_WEATHER_LON", "116.4074"))
 CITY = os.environ.get("RLCD_WEATHER_CITY", "BEIJING")
 TTL = int(os.environ.get("RLCD_WEATHER_TTL", "600"))
+AIR_TTL = int(os.environ.get("RLCD_AIR_TTL", "600"))
+AIR_RETRY_SEC = int(os.environ.get("RLCD_AIR_RETRY_SEC", "60"))
 RAIN_ALERT_PCT = float(os.environ.get("RLCD_RAIN_ALERT_PCT", "30"))
 
 _SKYCON: dict[str, tuple[str, str]] = {
@@ -33,6 +35,9 @@ _SKYCON: dict[str, tuple[str, str]] = {
 }
 
 _cache: dict[str, object] = {"weather": None, "ts": 0.0}
+_air_cache: dict[str, object] = {
+    "aqi": None, "pm25": None, "ts": 0.0, "attempt_ts": 0.0,
+}
 
 
 def _json(url: str) -> dict:
@@ -83,6 +88,37 @@ def _air_quality() -> tuple[float | None, float | None]:
             float(pm25) if pm25 is not None else None)
 
 
+def _cached_air_quality() -> tuple[float | None, float | None]:
+    now = time.time()
+    have_value = _air_cache["aqi"] is not None or _air_cache["pm25"] is not None
+    if have_value and now - float(_air_cache["ts"]) < AIR_TTL:
+        return _air_cache["aqi"], _air_cache["pm25"]  # type: ignore[return-value]
+    if now - float(_air_cache["attempt_ts"]) < AIR_RETRY_SEC:
+        return _air_cache["aqi"], _air_cache["pm25"]  # type: ignore[return-value]
+
+    _air_cache["attempt_ts"] = now
+    try:
+        aqi, pm25 = _air_quality()
+        if aqi is not None:
+            _air_cache["aqi"] = aqi
+        if pm25 is not None:
+            _air_cache["pm25"] = pm25
+        if aqi is not None or pm25 is not None:
+            _air_cache["ts"] = now
+    except Exception:
+        pass
+    return _air_cache["aqi"], _air_cache["pm25"]  # type: ignore[return-value]
+
+
+def _apply_air_quality(weather: Weather) -> Weather:
+    aqi, pm25 = _cached_air_quality()
+    if aqi is not None:
+        weather.aqi = aqi
+    if pm25 is not None:
+        weather.pm25 = pm25
+    return weather
+
+
 def _fetch_caiyun() -> Weather:
     data = _json(f"https://api.caiyunapp.com/v2.6/{CAIYUN_KEY}/{LON},{LAT}/realtime")
     current = data["result"]["realtime"]
@@ -128,10 +164,6 @@ def _fetch_weather() -> Weather:
             weather.rain_3h_pct = _rain_probability()
         except Exception:
             pass
-    try:
-        weather.aqi, weather.pm25 = _air_quality()
-    except Exception:
-        pass
     weather.rain_alert = bool(
         weather.rain_3h_pct is not None and weather.rain_3h_pct >= RAIN_ALERT_PCT
     )
@@ -141,10 +173,11 @@ def _fetch_weather() -> Weather:
 def fetch_weather() -> Weather | None:
     now = time.time()
     if _cache["weather"] is not None and now - float(_cache["ts"]) < TTL:
-        return _cache["weather"]  # type: ignore[return-value]
+        return _apply_air_quality(_cache["weather"])  # type: ignore[arg-type]
     try:
         weather = _fetch_weather()
         _cache.update(weather=weather, ts=now)
-        return weather
+        return _apply_air_quality(weather)
     except Exception:
-        return _cache["weather"]  # type: ignore[return-value]
+        cached = _cache["weather"]
+        return _apply_air_quality(cached) if isinstance(cached, Weather) else None

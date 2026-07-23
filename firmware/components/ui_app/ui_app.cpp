@@ -229,7 +229,7 @@ void ui_app_update(const usage_report_t *report)
 
     if (report->weather.valid) {
         lv_image_set_src(img_wx_detail, wx_icon_large(report->weather.icon));
-        snprintf(value, sizeof(value), "%.0f\xC2\xB0""C", report->weather.temp_c);
+        snprintf(value, sizeof(value), "%.1f\xC2\xB0""C", report->weather.temp_c);
         lv_label_set_text(lbl_wx_temp, value);
         lv_label_set_text(lbl_wx_condition, report->weather.condition);
         if (report->weather.aqi >= 0) snprintf(value, sizeof(value), "AQI %.0f", report->weather.aqi);
